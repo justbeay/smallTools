@@ -10,6 +10,7 @@ import java.util.List;
 public class Article {
 
     private String title;
+    private String coverImage;  // 封面图片URL
     private String content;
     private Integer currentPage;
     private Integer totalPage;
@@ -21,6 +22,14 @@ public class Article {
 
     public void setTitle(String title) {
         this.title = title;
+    }
+
+    public String getCoverImage() {
+        return coverImage;
+    }
+
+    public void setCoverImage(String coverImage) {
+        this.coverImage = coverImage;
     }
 
     public String getContent() {
@@ -51,10 +60,23 @@ public class Article {
         return subArticles;
     }
 
-    public void addSubArticle(Article subArticle) {
+    /**
+     * 添加子章节
+     * @param subArticle 待添加章节
+     * @param inceaseTotal true时递增totalPage
+     */
+    public void addSubArticle(Article subArticle, boolean inceaseTotal) {
         if(this.subArticles == null){
             this.subArticles = new ArrayList<Article>();
         }
         this.subArticles.add(subArticle);
+    }
+
+    /**
+     * 是否为最后一页
+     * @return
+     */
+    public boolean isLastPage(){
+        return currentPage >= totalPage;
     }
 }

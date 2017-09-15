@@ -1,6 +1,8 @@
 package com.tool.grab;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 文章抓取<br/>
@@ -19,8 +21,25 @@ public class ArticleGrab {
     private String pagePrevStructure;  // 文章上一页DOM结构
     private String pageNextStructure;  // 文章下一页DOM结构
 
+    private Map<String, Object> getRequestParam;
+    private Map<String, Object> postRequestParam;
+
     public ArticleGrab(){
 
+    }
+
+    public void addGetRequestParam(String paramKey, Object paramValue){
+        if(this.getRequestParam == null){
+            this.getRequestParam = new HashMap<String, Object>();
+        }
+        this.getRequestParam.put(paramKey, paramValue);
+    }
+
+    public void addPostRequestParam(String paramKey, Object paramValue){
+        if(this.postRequestParam == null){
+            this.postRequestParam = new HashMap<String, Object>();
+        }
+        this.postRequestParam.put(paramKey, paramValue);
     }
 
     public void setCatalogueUrl(String catalogueUrl) {

@@ -25,6 +25,7 @@
         <commons.lang3.version>3.3.2</commons.lang3.version>
         <commons.io.version>2.4</commons.io.version>
         <fastjson.version>1.2.17</fastjson.version>
+        <jsoup.version>1.10.2</jsoup.version>
     </properties>
 
     <dependencies>
@@ -67,6 +68,11 @@
             <groupId>commons-io</groupId>
             <artifactId>commons-io</artifactId>
             <version>${commons.io.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>${jsoup.version}</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>

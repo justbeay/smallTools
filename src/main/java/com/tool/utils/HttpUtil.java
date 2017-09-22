@@ -2,10 +2,7 @@ package com.tool.utils;
 
 import com.alibaba.fastjson.JSONObject;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.http.HttpEntity;
-import org.apache.http.HttpHost;
-import org.apache.http.HttpResponse;
-import org.apache.http.HttpStatus;
+import org.apache.http.*;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.ClientProtocolException;
@@ -175,7 +172,7 @@ public class HttpUtil {
             HttpEntity httpEntity = httpResponse.getEntity();
             if(httpEntity != null){
                 try {
-                    body = EntityUtils.toString(httpEntity, DEFAULT_ENCODING);
+                    body = EntityUtils.toString(httpEntity, getHttpContentCharset(httpEntity));
                 } catch (IOException e) {
                     logger.warn("get response fail", e);
                 }
@@ -184,6 +181,19 @@ public class HttpUtil {
             return false;
         }
         return true;
+    }
+
+    private static String getHttpContentCharset(HttpEntity httpEntity){
+        Header contentType = httpEntity.getContentType();
+        if(contentType != null && contentType.getValue() != null){
+            for(String nameValuePair : contentType.getValue().split(";")){
+                nameValuePair = nameValuePair.trim().toLowerCase();
+                if(nameValuePair.startsWith("charset=")){
+                    return nameValuePair.substring("charset=".length());
+                }
+            }
+        }
+        return DEFAULT_ENCODING;
     }
 
     private static void close(HttpEntity httpEntity, CloseableHttpResponse httpResponse,
@@ -251,7 +261,7 @@ public class HttpUtil {
                 return null;
             }
             httpEntity = httpResponse.getEntity();
-            return httpEntity == null ? null : EntityUtils.toString(httpEntity, DEFAULT_ENCODING);
+            return httpEntity == null ? null : EntityUtils.toString(httpEntity, getHttpContentCharset(httpEntity));
         }catch(Exception e){
             logger.error("http get request:{} with header:{} error, message:{}", url, headerParams, e.getMessage());
             throw new RuntimeException(e);
@@ -365,7 +375,7 @@ public class HttpUtil {
                 return null;
             }
             httpEntity = httpResponse.getEntity();
-            return httpEntity == null ? null : EntityUtils.toString(httpEntity, DEFAULT_ENCODING);
+            return httpEntity == null ? null : EntityUtils.toString(httpEntity, getHttpContentCharset(httpEntity));
         } catch (Exception e) {
             logger.error("http post request:{} with header:{} and param:{} error, message:{}", url, headerParams, bodyParams, e.getMessage());
             throw new RuntimeException(e);
@@ -403,7 +413,7 @@ public class HttpUtil {
                 return null;
             }
             httpEntity = httpResponse.getEntity();
-            return httpEntity == null ? null : EntityUtils.toString(httpEntity, DEFAULT_ENCODING);
+            return httpEntity == null ? null : EntityUtils.toString(httpEntity, getHttpContentCharset(httpEntity));
         } catch (Exception e) {
             logger.error("http post json request:{} with header:{} and content:{} error, message:{}", url, headerParams, jsonContent, e.getMessage());
             throw new RuntimeException(e);

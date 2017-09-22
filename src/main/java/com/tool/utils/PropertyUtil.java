@@ -17,8 +17,9 @@ public class PropertyUtil {
 
     static {
         propFiles = new ArrayList<String>();
-        propFiles.add("sql_format.properties");
+        propFiles.add("common.properties");
         propFiles.add("network.properties");
+        propFiles.add("sql_format.properties");
 
         propsMap = new LinkedHashMap<String, Properties>();
         for(String propFile : propFiles) {
@@ -42,6 +43,11 @@ public class PropertyUtil {
         return null;
     }
 
+    public static String getProperty(String key, String defaultValue){
+        String value = getProperty(key);
+        return value != null ? value : defaultValue;
+    }
+
     public static <T> T getProperty(String key, Class<T> retClass){
         String valueStr = getProperty(key);
         if(!StringUtils.isEmpty(valueStr)) {
@@ -60,6 +66,11 @@ public class PropertyUtil {
             return null;
         }
         return (T) valueStr;
+    }
+
+    public static <T> T getProperty(String key, Class<T> retClass, T defaultValue){
+        T value = getProperty(key, retClass);
+        return value != null ? value : defaultValue;
     }
 
     public static Map<String, Object> getProperties(String keyPrefix, boolean splitKey, boolean removePrefix){

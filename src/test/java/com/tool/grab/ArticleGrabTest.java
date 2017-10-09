@@ -1,6 +1,7 @@
 package com.tool.grab;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.collections.CollectionUtils;
@@ -26,6 +27,11 @@ public class ArticleGrabTest {
         grabInstance.setCatalogueUrl("http://www.biquge5200.com/38_38857/");
         grabInstance.setCatalogueTitleStructure("#info > h1");
         grabInstance.setCatalogueListStructure("#list > dl > dd:nth-child({}) > a");
+
+        grabInstance.setContentStructure("#content");
+        grabInstance.setTitleStructure("#wrapper > div.content_read > div > div.bookname > h1");
+        grabInstance.setPagePrevStructure("#wrapper > div.content_read > div > div.bookname > div.bottem1 > a:nth-child(3)");
+        grabInstance.setPageNextStructure("#wrapper > div.content_read > div > div.bookname > div.bottem1 > a:nth-child(5)");
     }
 
     @Test
@@ -44,5 +50,27 @@ public class ArticleGrabTest {
                 System.out.println(JSON.toJSONString(catalogue));
             }
         }
+    }
+
+    @Test
+    public void testGrabArticle() throws Exception{
+        Article article = grabInstance.grabArticle("http://www.biquge5200.com/38_38857/15054739.html");
+        System.out.println(JSONObject.toJSONString(article));
+    }
+
+    @Test
+    public void testGrabArticle1() throws Exception{
+        grabInstance.setContentUrl("http://www.biquge5200.com/38_38857/15054739.html");
+        grabInstance.setGrabTimeInterval(1000l);
+        Article article = grabInstance.grabArticle(3);
+        System.out.println(JSONObject.toJSONString(article));
+    }
+
+    @Test
+    public void testGrabArticle2() throws Exception{
+        grabInstance.setContentUrl("http://www.biquge5200.com/38_38857/15054739.html");
+        grabInstance.setGrabTimeInterval(500l);
+        List<Article> articles = grabInstance.grabArticle(2, 5);
+        System.out.println(JSONObject.toJSONString(articles));
     }
 }

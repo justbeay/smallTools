@@ -1,21 +1,16 @@
 package com.tool.grab;
 
-import com.tool.utils.HtmlGrabUtil;
-import com.tool.utils.HttpUtil;
-import com.tool.utils.PropertyUtil;
-import com.tool.utils.RandomUtil;
+import com.tool.utils.*;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.RandomUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.http.client.utils.DateUtils;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URL;
 import java.util.*;
@@ -38,11 +33,13 @@ public class ArticleGrab {
     private String contentStructure;  // 正文DOM结构
     private String pagePrevStructure;  // 文章上一页DOM结构
     private String pageNextStructure;  // 文章下一页DOM结构
+    private Long grabTimeInterval;  // 两次抓取之间的时间间隔（防止抓取过快导致服务器报错，默认不停顿），单位毫秒
 
     private Map<String, Object> getRequestParam;
     private Map<String, Object> postRequestParam;
     private Document cataloguePageDoc;
     private Document curContentPageDoc;
+    private Long lastGrabTime;  // 上次网页抓取的时间戳
 
     private static final String DEFAULT_ENCODING = "UTF8";
     private static Logger logger = LoggerFactory.getLogger(ArticleGrab.class);
@@ -111,11 +108,15 @@ public class ArticleGrab {
         this.pageNextStructure = pageNextStructure;
     }
 
+    public void setGrabTimeInterval(Long grabTimeInterval) {
+        this.grabTimeInterval = grabTimeInterval;
+    }
+
     /**
      * 抓取目录页标题（大标题或总标题）
      * @return
      */
-    public String grabCatalogueTitle() throws Exception{
+    public String grabCatalogueTitle() throws IOException{
         this.loadCataloguePage(false);
         if(cataloguePageDoc != null && catalogueTitleStructure != null){
             return HtmlGrabUtil.getInnerHtml(cataloguePageDoc, catalogueTitleStructure);
@@ -127,13 +128,25 @@ public class ArticleGrab {
      * 抓取目录
      * @return
      */
-    public List<Catalogue> grabCatalogue() throws Exception{
+    public List<Catalogue> grabCatalogue() throws IOException{
         this.loadCataloguePage(false);
         if(cataloguePageDoc != null && catalogueListStructure != null){
+            long startTime = System.currentTimeMillis();
+            logger.info("start to get catalogues...");
             List<Catalogue> resultList = new ArrayList<Catalogue>();
+            String parentSelector = null;
+            Element parentElement = null;
             for(int i=1; ; i++){
                 String selector = HtmlGrabUtil.formatSelector(catalogueListStructure, i);
-                Element itemEle = HtmlGrabUtil.get(cataloguePageDoc, selector);
+                if(parentElement == null) {
+                    parentSelector = HtmlGrabUtil.getCommonSelector(selector, catalogueListStructure);
+                    parentElement = StringUtils.isEmpty(parentSelector) ? cataloguePageDoc : HtmlGrabUtil.get(cataloguePageDoc, parentSelector);
+                }
+                if(!StringUtils.isEmpty(parentSelector)){  // 有公共父级元素，从父级元素开始搜索（加快速度）
+                    selector = selector.substring(parentSelector.length()).trim();
+                    if(selector.startsWith(">")) selector = selector.substring(1);
+                }
+                Element itemEle = HtmlGrabUtil.get(parentElement, selector);
                 if(itemEle == null) break;
                 Catalogue catalogue = new Catalogue();
                 catalogue.setTitle(itemEle.text());
@@ -141,9 +154,26 @@ public class ArticleGrab {
                 resultList.add(catalogue);
                 logger.debug("The {}th catalogue was added...", i);
             }
+            logger.info("finish getting catalogues, {} in total, use time:{}ms", resultList.size(), System.currentTimeMillis() - startTime);
             return resultList;
         }
         return null;
+    }
+
+    public Article grabArticle(String contentUrl) throws IOException{
+        Article article = null;
+        this.loadContentPage(contentUrl);
+        if(this.curContentPageDoc != null){
+            article = new Article();
+            if(this.contentStructure != null){
+                String content = HtmlGrabUtil.getInnerHtml(this.curContentPageDoc, this.contentStructure);
+                article.setContent(HtmlGrabUtil.formatText(content));
+            }
+            if(this.titleStructure != null){
+                article.setTitle(HtmlGrabUtil.getInnerHtml(this.curContentPageDoc, this.titleStructure));
+            }
+        }
+        return article;
     }
 
     /**
@@ -151,8 +181,30 @@ public class ArticleGrab {
      * @param currentPage 待抓取文章页号（从`firstArticleUrl`文章页号开始算起）
      * @return
      */
-    public Article grabArticle(Integer currentPage){
-        return null;
+    public Article grabArticle(Integer currentPage) throws IOException{
+        if(this.contentUrl == null){
+            throw new RuntimeException("contentUrl must specified.");
+        }
+        // 从第一页开始根据翻页按钮逐页跳转到指定页
+        String curPageUrl=this.contentUrl;
+        for(int startPage=1; startPage < currentPage && curPageUrl != null; startPage++){
+            this.loadContentPage(curPageUrl);
+            curPageUrl = getPageNextUrl();
+        }
+        // 已获取到目标页链接，开始解析正文
+        return curPageUrl == null ? null : this.grabArticle(curPageUrl);
+    }
+
+    private String getPageNextUrl(){
+        if(this.pageNextStructure == null){
+            throw new RuntimeException("pageNextStructure must specified.");
+        }
+        Element pageNextEle = HtmlGrabUtil.get(this.curContentPageDoc, this.pageNextStructure);
+        String resultUrl = null;
+        if(pageNextEle != null) {
+            resultUrl = pageNextEle.attr("href");
+        }
+        return resultUrl;
     }
 
     /**
@@ -161,8 +213,21 @@ public class ArticleGrab {
      * @param endPage 待抓取的最后一页
      * @return
      */
-    public List<Article> grabArticle(Integer startPage, Integer endPage){
-        return null;
+    public List<Article> grabArticle(Integer startPage, Integer endPage) throws IOException{
+        if(this.contentUrl == null){
+            throw new RuntimeException("contentUrl must specified.");
+        }
+        List<Article> articles = new ArrayList<Article>();
+        // 从第一页开始根据翻页按钮逐页跳转到指定页
+        String curPageUrl=this.contentUrl;
+        for(int tmpPage=1; tmpPage <= endPage && curPageUrl != null; tmpPage++){
+            this.loadContentPage(curPageUrl);
+            if(tmpPage >= startPage) {
+                articles.add(this.grabArticle(curPageUrl));
+            }
+            curPageUrl = getPageNextUrl();
+        }
+        return articles;
     }
 
     /**
@@ -185,11 +250,13 @@ public class ArticleGrab {
         if(cataloguePageDoc != null && !force) return;
 
         String pageContent = null;
+        this.doBeforePageLoad();
         if(catalogueUrlReqMethod != null && "post".equals(catalogueUrlReqMethod.toLowerCase())){
             pageContent = HttpUtil.post(catalogueUrl, null);
         }else{
             pageContent = HttpUtil.get(catalogueUrl);
         }
+        if(pageContent == null) throw new RuntimeException("load catalogue page failure.");
         this.saveHttpRequestContent(catalogueUrl, pageContent);
         cataloguePageDoc = Jsoup.parse(pageContent);
     }
@@ -197,13 +264,34 @@ public class ArticleGrab {
     /** 加载文章正文页 */
     private void loadContentPage(String curContentUrl) throws IOException{
         String pageContent = null;
+        this.doBeforePageLoad();
         if(contentUrlReqMethod != null && "post".equals(contentUrlReqMethod.toLowerCase())){
             pageContent = HttpUtil.post(curContentUrl, null);
         }else{
             pageContent = HttpUtil.get(curContentUrl);
         }
+        if(pageContent == null) throw new RuntimeException("load content page failure.");
         this.saveHttpRequestContent(curContentUrl, pageContent);
         curContentPageDoc = Jsoup.parse(pageContent);
+    }
+
+    private void doBeforePageLoad(){
+        if(this.lastGrabTime != null && this.grabTimeInterval != null){
+            while(true) {
+                long waitTime = this.grabTimeInterval - (System.currentTimeMillis() - this.lastGrabTime);
+                if(waitTime <= 0){
+                    this.lastGrabTime = System.currentTimeMillis();
+                    break;
+                }
+                try {
+                    Thread.sleep(waitTime);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }else {
+            this.lastGrabTime = System.currentTimeMillis();
+        }
     }
 
 }

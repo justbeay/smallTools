@@ -1,5 +1,6 @@
 package com.tool.utils;
 
+import org.apache.commons.lang3.StringUtils;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
@@ -32,22 +33,33 @@ public class HtmlGrabUtil {
         return formatResult;
     }
 
+    public static String getCommonSelector(String... selector){
+        String commonPrefix = StringUtil.getCommonPrefix(selector);
+        int minLength = StringUtil.getMinLength(selector);
+        if(commonPrefix.length() == minLength) {
+            // 某个选择器为公共前缀，直接返回
+            return commonPrefix;
+        }
+        int pos = commonPrefix.lastIndexOf(">");
+        return pos == -1 ? null : commonPrefix.substring(0, pos).trim();
+    }
+
     /**
      * 通过选择器选择html节点
-     * @param document
+     * @param parentElement
      * @param selector
      * @return
      */
-    public static Element get(Document document, String selector){
-        Elements elements = document.select(selector);
+    public static Element get(Element parentElement, String selector){
+        Elements elements = parentElement.select(selector);
         if(elements == null || elements.isEmpty()) return null;
         Iterator<Element> iterator = elements.iterator();
         return iterator.next();
     }
 
-    public static List<Element> getAll(Document document, String selector){
+    public static List<Element> getAll(Element parentElement, String selector){
         List<Element> resultList = new ArrayList<Element>();
-        Elements elements = document.select(selector);
+        Elements elements = parentElement.select(selector);
         if(elements != null && !elements.isEmpty()){
             Iterator<Element> iterator = elements.iterator();
             while(iterator.hasNext()){
@@ -57,20 +69,29 @@ public class HtmlGrabUtil {
         return resultList;
     }
 
-    public static String getAsText(Document document, String selector){
-        Element element = get(document, selector);
-        return element == null ? null : element.html();
+    public static String getAsText(Element parentElement, String selector){
+        Element element = get(parentElement, selector);
+        return element == null ? null : element.text();
     }
 
     /**
      * 获取选择器所属节点的html文本
-     * @param document
+     * @param parentElement
      * @param selector
      * @return
      */
-    public static String getInnerHtml(Document document, String selector){
-        Element element = get(document, selector);
-        return element == null ? null : element.text();
+    public static String getInnerHtml(Element parentElement, String selector){
+        Element element = get(parentElement, selector);
+        return element == null ? null : element.html();
+    }
+
+    /**
+     * 文本格式化（替换换行符）
+     * @param text
+     * @return
+     */
+    public static String formatText(String text){
+        return text.replaceAll("(\n<br[ ]*/?>)|(<br[ ]*/?>\n)|(<br[ ]*/?>)", "\n");
     }
 
 }

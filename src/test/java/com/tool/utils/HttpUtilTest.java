@@ -44,4 +44,9 @@ public class HttpUtilTest {
         System.out.println(JSONObject.parse(result));
     }
 
+    @Test
+    public void testDownload(){
+        System.out.println(HttpUtil.downloadWithGet("https://www.zhihu.com", null, null));
+    }
+
 }

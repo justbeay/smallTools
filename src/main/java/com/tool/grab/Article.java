@@ -73,10 +73,10 @@ public class Article {
     }
 
     /**
-     * 是否为最后一页
+     * 是否还有下一页
      * @return
      */
-    public boolean isLastPage(){
-        return currentPage >= totalPage;
+    public boolean hasNext(){
+        return currentPage < totalPage;
     }
 }

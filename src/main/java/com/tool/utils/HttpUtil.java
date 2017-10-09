@@ -1,13 +1,13 @@
 package com.tool.utils;
 
 import com.alibaba.fastjson.JSONObject;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.*;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
-import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.CredentialsProvider;
-import org.apache.http.client.HttpClient;
+import org.apache.http.client.config.CookieSpecs;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -15,15 +15,15 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.config.Registry;
 import org.apache.http.config.RegistryBuilder;
-import org.apache.http.conn.HttpClientConnectionManager;
 import org.apache.http.conn.socket.ConnectionSocketFactory;
 import org.apache.http.conn.socket.PlainConnectionSocketFactory;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
 import org.apache.http.conn.ssl.TrustStrategy;
-import org.apache.http.conn.ssl.X509HostnameVerifier;
+import org.apache.http.conn.util.PublicSuffixMatcherLoader;
+import org.apache.http.cookie.CookieSpecProvider;
+import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.entity.ContentType;
-import org.apache.http.entity.StringEntity;
 import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.entity.mime.content.ContentBody;
 import org.apache.http.impl.client.BasicCredentialsProvider;
@@ -31,6 +31,10 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+import org.apache.http.impl.cookie.BestMatchSpecFactory;
+import org.apache.http.impl.cookie.BrowserCompatSpecFactory;
+import org.apache.http.impl.cookie.DefaultCookieSpecProvider;
+import org.apache.http.impl.cookie.RFC6265CookieSpecProvider;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.ssl.SSLContextBuilder;
 import org.apache.http.ssl.SSLContexts;
@@ -39,16 +43,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.net.ssl.*;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UnsupportedEncodingException;
-import java.net.URI;
+import java.io.*;
+import java.net.URL;
 import java.net.URLEncoder;
-import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -56,6 +55,15 @@ import java.util.Map;
  * Created by Administrator on 2017/9/11.
  */
 public class HttpUtil {
+
+    public static final String METHOD_POST = "POST";
+    public static final String METHOD_GET = "GET";
+
+    public static final String AGENT_TYPE_IE = "IE";
+    public static final String AGENT_TYPE_CHROME = "CHROME";
+    public static final String AGENT_TYPE_SAFARI = "SAFARI";
+    public static final String AGENT_TYPE_OPERA = "OPERA";
+    public static final String AGENT_TYPE_FIREFOX = "FIREFOX";
 
     private static final String DEFAULT_ENCODING = "utf-8";
     private static final Map<String, Object> networkSettings = PropertyUtil.getProperties("network.", false, true);
@@ -120,6 +128,7 @@ public class HttpUtil {
         connectionManager.setMaxTotal(poolSize);
         connectionManager.setDefaultMaxPerRoute(connectionManager.getMaxTotal());
         httpClientBuilder.setConnectionManager(connectionManager)
+                        .setDefaultCookieSpecRegistry(buildCookieSpecProviderRegistry())
                         .setConnectionManagerShared(true);  // forbid client closing connection manager
         return httpClientBuilder;
     }
@@ -148,6 +157,17 @@ public class HttpUtil {
             logger.error("error build SocketFactoryRegistry with SSL cert ignore, message:{}", e.getMessage());
             throw new RuntimeException(e);
         }
+    }
+
+    /**
+     * COOKIE策略生成
+     * @return
+     */
+    private static Registry<CookieSpecProvider> buildCookieSpecProviderRegistry(){
+        return RegistryBuilder.<CookieSpecProvider> create()
+                .register(CookieSpecs.DEFAULT, new DefaultCookieSpecProvider(PublicSuffixMatcherLoader.getDefault()))
+                .register(CookieSpecs.STANDARD, new RFC6265CookieSpecProvider(PublicSuffixMatcherLoader.getDefault()))
+                .build();
     }
 
     private static SSLConnectionSocketFactory getDefaultSSLSocketFactory(){
@@ -224,6 +244,36 @@ public class HttpUtil {
         }
     }
 
+    /**
+     * 追加请求参数到URL并返回
+     * @param url
+     * @param params
+     * @return
+     */
+    private static String appendQueryParamToUrl(String url, Map<String, ?> params){
+        if(params == null || params.isEmpty()) return url;
+        StringBuilder paramStr = new StringBuilder(url);
+        try {
+            if(StringUtils.isEmpty(new URL(url).getQuery())){
+                paramStr.append("?");
+            }else if(!url.endsWith("?") && !url.endsWith("&")){
+                paramStr.append("&");
+            }
+            boolean isFirstParam = true;
+            for (Map.Entry<String, ?> entry : params.entrySet()) {
+                if (isFirstParam) isFirstParam = false;
+                else paramStr.append("&");
+                paramStr.append(URLEncoder.encode(entry.getKey(), DEFAULT_ENCODING))
+                        .append('=')
+                        .append(URLEncoder.encode(entry.getValue().toString(), DEFAULT_ENCODING));
+            }
+        }catch (Exception e){
+            logger.error("error format http url:{} with param:{}", url, params);
+            throw new RuntimeException(e);
+        }
+        return paramStr.toString();
+    }
+
     private static <T extends HttpRequestBase> T appendHeaders(T httpRequest, Map<String, String> headerParams, ContentType contentType){
         // 设置默认头部信息
         httpRequest.addHeader("Accept-Charset", DEFAULT_ENCODING);
@@ -231,6 +281,11 @@ public class HttpUtil {
         // 设置文本格式默认编码
         finalContentType = finalContentType.withCharset(DEFAULT_ENCODING);
         httpRequest.addHeader("Content-Type",finalContentType.toString());
+        // 设置浏览器代理信息
+        String userAgent = (String) networkSettings.get("useragent");
+        if(!StringUtils.isEmpty(userAgent)){
+            httpRequest.addHeader("User-Agent", userAgent);
+        }
         // 个性化头信息
         if(headerParams != null && !headerParams.isEmpty()){
             for(Map.Entry<String, String> headerEntry : headerParams.entrySet()){
@@ -240,6 +295,97 @@ public class HttpUtil {
         return httpRequest;
     }
 
+    private static String getSavePathForHttpResult(String url, HttpEntity httpEntity){
+        int endPos = url.indexOf("?");
+        int startPos = endPos == -1 ? url.lastIndexOf("/") : url.lastIndexOf("/", endPos);
+        String fileName = startPos == -1 ? null : (endPos == -1 ? url.substring(startPos + 1) : url.substring(startPos + 1, endPos - 1));
+        String mimeType = null;
+        Header header = httpEntity.getContentType();
+        if(header != null && !StringUtils.isEmpty(header.getValue())){
+            mimeType = header.getValue().split(";")[0];
+        }
+        String saveFormat = ".unknown";
+        if(mimeType.equals("text-plain")){
+            saveFormat = ".txt";
+        }else if(mimeType.endsWith("json")){
+            saveFormat = ".json";
+        }else if(mimeType.endsWith("xml")){
+            saveFormat = ".xml";
+        }else if(mimeType.endsWith("html")){
+            saveFormat = ".html";
+        }
+        try {
+            fileName = fileName.indexOf('.') != -1 && !new URL(url).getPath().isEmpty() ? fileName : fileName + saveFormat;
+            fileName += "_" + System.currentTimeMillis() + RandomUtil.getRandomNumberStr(4);  // 文件名追加时间戳，防止重名导致覆盖
+        }catch (Exception e){
+            logger.error("error get http result save filename, message:{}", e.getMessage());
+            throw new RuntimeException(e);
+        }
+        return PropertyUtil.getProperty("path.save.tmp") + "/" + fileName;
+    }
+
+    /**
+     * http请求
+     * @param url 请求URL地址
+     * @param headerParams 请求头部信息
+     * @param bodyParams 请求参数
+     * @param method GET、POST
+     * @param saveLocal 是否保存返回结果到本地
+     * @return 响应报文内容或保存的本地文件路径（saveLocal为true时）
+     */
+    private static String request(String url, Map<String, String> headerParams, Map<String, ?> bodyParams, String method, boolean saveLocal){
+        if(bodyParams == null) {
+            logger.debug("send http {} request to url:{} with header:{}", method, url, headerParams);
+        } else {
+            logger.debug("send http {} request to url:{} with header:{} and body:{}", method, url, headerParams, bodyParams);
+        }
+        CloseableHttpClient httpClient = getHttpClientBuilder(url).build();
+        HttpRequestBase httpRequest = null;
+        CloseableHttpResponse httpResponse = null;
+        HttpEntity httpEntity = null;
+        try{
+            if(METHOD_POST.equals(method.toUpperCase())){
+                httpRequest = new HttpPost(url);
+                HttpEntity requestEntity = buildDefaultHttpEntity(bodyParams);
+                ((HttpPost) httpRequest).setEntity(requestEntity);
+                appendHeaders(httpRequest, headerParams, formatContentType((requestEntity == null || requestEntity.getContentType() == null)
+                        ? null : requestEntity.getContentType().getValue()));
+            }else{
+                httpRequest = new HttpGet(appendQueryParamToUrl(url, headerParams));
+                appendHeaders(httpRequest, headerParams, null);
+            }
+            httpRequest.setConfig(requstConfig);
+            httpResponse = httpClient.execute(httpRequest);
+            if(!checkHttpResponse(httpResponse)) {  // HTTP返回状态码异常
+                return null;
+            }
+            httpEntity = httpResponse.getEntity();
+            if(saveLocal){
+                return saveHttpResponse(url, httpResponse);
+            }
+            return httpResponse.getEntity() == null ? null : EntityUtils.toString(httpEntity, getHttpContentCharset(httpEntity));
+        }catch(Exception e){
+            logger.error("http {} request:{} with header:{} error, message:{}", method, url, headerParams, e.getMessage());
+            throw new RuntimeException(e);
+        }finally{
+            close(httpEntity, httpResponse, httpClient, httpRequest);
+        }
+    }
+
+    private static String saveHttpResponse(String url, CloseableHttpResponse httpResponse) throws IOException{
+        HttpEntity httpEntity = httpResponse.getEntity();
+        if(httpEntity == null) return null;
+
+        File saveFile = new File(getSavePathForHttpResult(url, httpEntity));
+        byte[] saveData = EntityUtils.toByteArray(httpEntity);
+        FileUtils.writeByteArrayToFile(saveFile, saveData);
+        return saveFile.getAbsolutePath();
+    }
+
+    public static  String getWithHeader(String url, Map<String, String> headerParams, Map<String, Object> params){
+        return request(url, headerParams, params, METHOD_GET, false);
+    }
+
     /**
      * 带头信息的get请求
      * @param url
@@ -247,51 +393,7 @@ public class HttpUtil {
      * @return
      */
     public static String getWithHeader(String url, Map<String, String> headerParams){
-        logger.debug("send http get request to url:{} with header:{}", url, headerParams);
-        CloseableHttpClient httpClient = getHttpClientBuilder(url).build();
-        HttpGet httpGet = null;
-        CloseableHttpResponse httpResponse = null;
-        HttpEntity httpEntity = null;
-        try{
-            httpGet = new HttpGet(url);
-            httpGet.setConfig(requstConfig);
-            appendHeaders(httpGet, headerParams, null);
-            httpResponse = httpClient.execute(httpGet);
-            if(!checkHttpResponse(httpResponse)) {  // HTTP返回状态码异常
-                return null;
-            }
-            httpEntity = httpResponse.getEntity();
-            return httpEntity == null ? null : EntityUtils.toString(httpEntity, getHttpContentCharset(httpEntity));
-        }catch(Exception e){
-            logger.error("http get request:{} with header:{} error, message:{}", url, headerParams, e.getMessage());
-            throw new RuntimeException(e);
-        }finally{
-            close(httpEntity, httpResponse, httpClient, httpGet);
-        }
-    }
-
-    public static  String getWithHeader(String url, Map<String, String> headerParams, Map<String, Object> params){
-        StringBuilder paramStr = new StringBuilder();
-        if(params != null && !params.isEmpty()){
-            try {
-                boolean isFirstParam = true;
-                for (Map.Entry<String, Object> entry : params.entrySet()) {
-                    if (isFirstParam) {
-                        isFirstParam = false;
-                        paramStr.append("?");
-                    } else {
-                        paramStr.append("&");
-                    }
-                    paramStr.append(URLEncoder.encode(entry.getKey(), DEFAULT_ENCODING))
-                            .append('=')
-                            .append(URLEncoder.encode(entry.getValue().toString(), DEFAULT_ENCODING));
-                }
-            }catch (UnsupportedEncodingException e){
-                logger.error("error generating http get request params, message:{}", e.getMessage());
-                throw new RuntimeException(e);
-            }
-        }
-        return getWithHeader(url + paramStr.toString(), headerParams);
+        return getWithHeader(url, headerParams, null);
     }
 
     public static String get(String url, Map<String, Object> params){
@@ -359,29 +461,7 @@ public class HttpUtil {
      * @return
      */
     public static String postWithHeader(String url, Map<String, String> headerParams, Map<String, ?> bodyParams){
-        logger.debug("send http post request to url:{} with header:{} and bodyParams:{}", url, headerParams, bodyParams);
-        CloseableHttpClient httpClient = getHttpClientBuilder(url).build();
-        HttpPost httpPost = null;
-        CloseableHttpResponse httpResponse = null;
-        HttpEntity httpEntity = null;
-        try{
-            httpPost = new HttpPost(url);
-            httpPost.setConfig(requstConfig);
-            httpPost.setEntity(buildDefaultHttpEntity(bodyParams));
-            appendHeaders(httpPost, headerParams, formatContentType((httpPost.getEntity() == null || httpPost.getEntity().getContentType() == null)
-                                    ? null : httpPost.getEntity().getContentType().getValue()));
-            httpResponse = httpClient.execute(httpPost);
-            if(!checkHttpResponse(httpResponse)) {  // HTTP返回状态码异常
-                return null;
-            }
-            httpEntity = httpResponse.getEntity();
-            return httpEntity == null ? null : EntityUtils.toString(httpEntity, getHttpContentCharset(httpEntity));
-        } catch (Exception e) {
-            logger.error("http post request:{} with header:{} and param:{} error, message:{}", url, headerParams, bodyParams, e.getMessage());
-            throw new RuntimeException(e);
-        }finally{
-            close(httpEntity, httpResponse, httpClient, httpPost);
-        }
+        return request(url, headerParams, bodyParams, METHOD_POST, false);
     }
 
     public static String post(String url, Map<String, ?> params){
@@ -391,13 +471,13 @@ public class HttpUtil {
     /**
      * post请求（请求内容为JSON）
      * @param url 请求URL
+     * @param contentByte 请求内容
      * @param headerParams 头信息
-     * @param jsonContent 请求JSON内容
-     * @param <T> 请求内容对应类型，可以为String、List、Map、Bean等
+     * @param contentType
      * @return
      */
-    public static <T> String postJsonWithHeader(String url, Map<String, String> headerParams, T jsonContent){
-        logger.debug("send http post json request to url:{} with header:{} and content:{}", url, headerParams, jsonContent);
+    public static  String post(String url, byte[] contentByte, Map<String, String> headerParams, String contentType){
+        logger.debug("send http post request to url:{}", url);
         CloseableHttpClient httpClient = getHttpClientBuilder(url).build();
         HttpPost httpPost = null;
         CloseableHttpResponse httpResponse = null;
@@ -405,9 +485,8 @@ public class HttpUtil {
         try{
             httpPost = new HttpPost(url);
             httpPost.setConfig(requstConfig);
-            appendHeaders(httpPost, headerParams, ContentType.APPLICATION_JSON);
-            String jsonStr = jsonContent instanceof String ? (String) jsonContent : JSONObject.toJSONString(jsonContent);
-            httpPost.setEntity(new StringEntity(jsonStr));
+            appendHeaders(httpPost, headerParams, ContentType.parse(contentType));
+            httpPost.setEntity(new ByteArrayEntity(contentByte));
             httpResponse = httpClient.execute(httpPost);
             if(!checkHttpResponse(httpResponse)) {  // HTTP返回状态码异常
                 return null;
@@ -415,14 +494,28 @@ public class HttpUtil {
             httpEntity = httpResponse.getEntity();
             return httpEntity == null ? null : EntityUtils.toString(httpEntity, getHttpContentCharset(httpEntity));
         } catch (Exception e) {
-            logger.error("http post json request:{} with header:{} and content:{} error, message:{}", url, headerParams, jsonContent, e.getMessage());
+            logger.error("http post request:{} error, message:{}", url, e.getMessage());
             throw new RuntimeException(e);
         }finally{
             close(httpEntity, httpResponse, httpClient, httpPost);
         }
     }
 
-    public static <T> String postJson(String url, T jsonContent){
-        return postJsonWithHeader(url, null, jsonContent);
+    public static <T> String postJson(String url, T object, Map<String, String> headerParams){
+        String jsonContent = object instanceof String ? (String) object : JSONObject.toJSONString(object);
+        try {
+            return post(url, jsonContent.getBytes(DEFAULT_ENCODING), headerParams, "content-type:application/json");
+        } catch (UnsupportedEncodingException e) {
+            logger.error("http post json request:{} error, message:{}", url, e.getMessage());
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static String downloadWithGet(String url, Map<String, String> headers, Map<String, ?> params){
+        return request(url, headers, params, METHOD_GET, true);
+    }
+
+    public static String downloadWithPost(String url, Map<String, String> headerParams, Map<String, ?> bodyParams){
+        return request(url, headerParams, bodyParams, METHOD_POST, true);
     }
 }

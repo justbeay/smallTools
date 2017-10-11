@@ -221,9 +221,10 @@ public class ArticleGrab {
         // 从第一页开始根据翻页按钮逐页跳转到指定页
         String curPageUrl=this.contentUrl;
         for(int tmpPage=1; tmpPage <= endPage && curPageUrl != null; tmpPage++){
-            this.loadContentPage(curPageUrl);
-            if(tmpPage >= startPage) {
+            if(tmpPage >= startPage) {  // 待抓取文章页
                 articles.add(this.grabArticle(curPageUrl));
+            }else{  // 无需抓取，加载页面即可
+                this.loadContentPage(curPageUrl);
             }
             curPageUrl = getPageNextUrl();
         }

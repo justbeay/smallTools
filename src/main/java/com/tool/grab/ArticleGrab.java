@@ -26,7 +26,7 @@ public class ArticleGrab {
     private String catalogueUrlReqMethod;  // 目录页URL请求method
     private String catalogueTitleStructure;  // 目录页标题DOM结构
     private String coverImageStructure;  // 封面图DOM结构
-    private String catalogueListStructure;  // 目录页文章列表DOM结构
+    private String catalogueListStructure;  // 目录页文章列表DOM结构（todo: 支持多层级目录，eg:第一部>第三章>第五节）
     private String contentUrl;  // 文章正文URL（最好是第一页）
     private String contentUrlReqMethod;  // 文章正文URL请求method
     private String titleStructure;  // 文章标题DOM结构
@@ -34,7 +34,7 @@ public class ArticleGrab {
     private String pagePrevStructure;  // 文章上一页DOM结构
     private String pageNextStructure;  // 文章下一页DOM结构
     private Long grabTimeInterval;  // 两次抓取之间的时间间隔（防止抓取过快导致服务器报错，默认不停顿），单位毫秒
-    private Map<String, SpamStrategyEnum> spamRules;
+    private Map<String, SpamStrategyEnum> spamRules;  // 反垃圾规则
 
     private Map<String, Object> getRequestParam;
     private Map<String, Object> postRequestParam;
@@ -150,17 +150,19 @@ public class ArticleGrab {
             // 执行反垃圾策略匹配逻辑
             String keyword = null;
             SpamStrategyEnum strategy = null;
-            for(Map.Entry<String, SpamStrategyEnum> entry : this.spamRules.entrySet()){
-                String tmpKeyword = entry.getKey();
-                SpamStrategyEnum tmpStrategy = entry.getValue();
-                boolean matched = tmpStrategy.matchEqual() ? (tmpKeyword.isEmpty() ? lineStr.trim().isEmpty() : lineStr.trim().equals(tmpStrategy))
-                                            : lineStr.contains(tmpKeyword);
-                if(matched){  // 匹配到规则
-                    if(!tmpStrategy.needContinue() || strategy == null || !strategy.deleteLine()){  // 匹配到更高级的规则
-                        strategy = tmpStrategy;
-                        keyword = tmpKeyword;
+            if(this.spamRules != null) {
+                for (Map.Entry<String, SpamStrategyEnum> entry : this.spamRules.entrySet()) {
+                    String tmpKeyword = entry.getKey();
+                    SpamStrategyEnum tmpStrategy = entry.getValue();
+                    boolean matched = tmpStrategy.matchEqual() ? (tmpKeyword.isEmpty() ? lineStr.trim().isEmpty() : lineStr.trim().equals(tmpStrategy))
+                            : lineStr.contains(tmpKeyword);
+                    if (matched) {  // 匹配到规则
+                        if (!tmpStrategy.needContinue() || strategy == null || !strategy.deleteLine()) {  // 匹配到更高级的规则
+                            strategy = tmpStrategy;
+                            keyword = tmpKeyword;
+                        }
+                        if (!strategy.needContinue()) break;  // 无需继续处理
                     }
-                    if(!strategy.needContinue()) break;  // 无需继续处理
                 }
             }
             if(strategy != null){  // 根据匹配到的最高级规则进行文本处理
@@ -215,16 +217,33 @@ public class ArticleGrab {
                 }
                 Element itemEle = HtmlGrabUtil.get(parentElement, selector);
                 if(itemEle == null) break;
-                Catalogue catalogue = new Catalogue();
-                catalogue.setTitle(itemEle.text());
-                catalogue.setUrl(itemEle.attr("href"));
-                resultList.add(catalogue);
-                logger.debug("The {}th catalogue was added...", i);
+                String title = itemEle.text();
+                String url = itemEle.attr("href");
+                this.addCatalogue(resultList,title , url);
             }
             logger.info("finish getting catalogues, {} in total, use time:{}ms", resultList.size(), System.currentTimeMillis() - startTime);
             return resultList;
         }
         return null;
+    }
+
+    private void addCatalogue(List<Catalogue> catalogueList, String title, String url){
+        Integer sectionNo = HtmlGrabUtil.guessPageNo(title, null);
+        if(sectionNo != null && !catalogueList.isEmpty()){
+            Integer lastSectionNo = catalogueList.get(catalogueList.size() - 1).getSectionNo();
+            if(sectionNo == 1 && lastSectionNo != null && lastSectionNo != 2){  // 章节号不连续
+                logger.warn("the first section was found after {} sections later, clear it...", catalogueList.size());
+                for(int i = catalogueList.size()-1; i >= 0; i--){  // 清空原有目录
+                    catalogueList.remove(i);
+                }
+            }
+        }
+        Catalogue catalogue = new Catalogue();
+        catalogue.setTitle(title);
+        catalogue.setUrl(url);
+        catalogue.setSectionNo(sectionNo);
+        catalogueList.add(catalogue);
+        logger.debug("The {}th catalogue was added...", catalogueList.size());
     }
 
     public Article grabArticle(String contentUrl) throws IOException{
@@ -253,6 +272,7 @@ public class ArticleGrab {
         if(this.contentUrl == null){
             throw new RuntimeException("contentUrl must specified.");
         }
+        long startTime = System.currentTimeMillis();
         // 从第一页开始根据翻页按钮逐页跳转到指定页
         String curPageUrl=this.contentUrl;
         for(int startPage=1; startPage < currentPage && curPageUrl != null; startPage++){
@@ -260,7 +280,9 @@ public class ArticleGrab {
             curPageUrl = getPageNextUrl();
         }
         // 已获取到目标页链接，开始解析正文
-        return curPageUrl == null ? null : this.grabArticle(curPageUrl);
+        Article result = curPageUrl == null ? null : this.grabArticle(curPageUrl);
+        logger.info("grab article at page:{} finished, use time:{}ms", currentPage, System.currentTimeMillis() - startTime);
+        return result;
     }
 
     private String getPageNextUrl(){
@@ -285,6 +307,7 @@ public class ArticleGrab {
         if(this.contentUrl == null){
             throw new RuntimeException("contentUrl must specified.");
         }
+        long startTime = System.currentTimeMillis();
         List<Article> articles = new ArrayList<Article>();
         // 从第一页开始根据翻页按钮逐页跳转到指定页
         String curPageUrl=this.contentUrl;
@@ -296,6 +319,7 @@ public class ArticleGrab {
             }
             curPageUrl = getPageNextUrl();
         }
+        logger.info("grab article at page:{}-{} finished, use time:{}ms", startPage, endPage, System.currentTimeMillis() - startTime);
         return articles;
     }
 

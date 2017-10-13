@@ -1,7 +1,5 @@
 package com.tool.utils;
 
-import org.apache.commons.lang3.StringUtils;
-import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
@@ -94,4 +92,36 @@ public class HtmlGrabUtil {
         return text.replaceAll("(\n<br[ ]*/?>)|(<br[ ]*/?>\n)|(<br[ ]*/?>)|(\r\n)", "\n");
     }
 
+    /**
+     * 根据文章标题和内容猜测文章所属页号
+     * @param title
+     * @param content
+     * @return 仅当猜测成功时返回页号，否则为null
+     */
+    public static Integer guessPageNo(String title, String content){
+        // 从前6个非空字符串中截取数字串
+        String firstNumber = null;
+        if(title != null){
+            String trimTitle = title.trim();
+            String[] numbers = NumberUtil.splitChineseNumber(trimTitle.substring(0, Math.min(trimTitle.length(), 6)));
+            if(numbers.length > 0 && trimTitle.matches("^(第\\s*)?"+numbers[0]+"\\s*(部|章|节|系列|\\s)")){
+                firstNumber = numbers[0];
+            }
+        }
+        if(content != null && firstNumber == null){
+            String trimContent = content.trim();
+            String[] numbers = NumberUtil.splitChineseNumber(trimContent.substring(0, Math.min(trimContent.length(), 6)));
+            if(numbers.length > 0 && trimContent.matches("^(第\\s*)?"+numbers[0]+"\\s*(部|章|节|系列|\\s)")){
+                firstNumber = numbers[0];
+            }
+        }
+        // 解析数字串，获得页号
+        if(firstNumber != null){
+            Double convertNumber = NumberUtil.convertChineseNumber(firstNumber);
+            if(convertNumber - convertNumber.intValue() == 0){  // 无小数位时才算页号
+                return convertNumber.intValue();
+            }
+        }
+        return null;
+    }
 }

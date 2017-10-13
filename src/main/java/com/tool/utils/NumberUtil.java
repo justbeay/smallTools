@@ -7,6 +7,7 @@ import java.util.*;
  */
 public class NumberUtil {
 
+    private static char[] arabicDigits = new char[]{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'};
     private static char[] simplifiedChineseDigits = new char[]{'○', '一', '二', '三', '四', '五', '六', '七', '八', '九'};
     private static char[] traditionalChineseDigits = new char[]{'零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖'};
 
@@ -120,7 +121,14 @@ public class NumberUtil {
     }
 
     private static Number convertChineseNumberSingle(char digit, Boolean simplified){
-        if(simplified == null || simplified){  // 搜索简体
+        if(simplified == null){  // 搜索阿拉伯数字
+            for(int i=0; i<arabicDigits.length; i++){
+                if(arabicDigits[i] == digit){
+                    return i;
+                }
+            }
+        }
+        if(simplified == null || simplified){  // 搜索简体数字
             for(int i=0; i<simplifiedChineseDigits.length; i++){
                 if(simplifiedChineseDigits[i] == digit){
                     return i;
@@ -132,7 +140,7 @@ public class NumberUtil {
                 }
             }
         }
-        if(simplified == null || !simplified){  // 搜索繁体
+        if(simplified == null || !simplified){  // 搜索繁体数字
             for(int i=0; i<traditionalChineseDigits.length; i++){
                 if(traditionalChineseDigits[i] == digit){
                     return i;

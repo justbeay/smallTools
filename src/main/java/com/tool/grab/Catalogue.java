@@ -8,6 +8,7 @@ public class Catalogue {
 
     private String title;
     private String url;
+    private Integer sectionNo;
 
     public String getTitle() {
         return title;
@@ -23,5 +24,13 @@ public class Catalogue {
 
     public void setUrl(String url) {
         this.url = url;
+    }
+
+    public Integer getSectionNo() {
+        return sectionNo;
+    }
+
+    public void setSectionNo(Integer sectionNo) {
+        this.sectionNo = sectionNo;
     }
 }

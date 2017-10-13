@@ -90,8 +90,8 @@ public class HtmlGrabUtil {
      * @param text
      * @return
      */
-    public static String formatText(String text){
-        return text.replaceAll("(\n<br[ ]*/?>)|(<br[ ]*/?>\n)|(<br[ ]*/?>)", "\n");
+    public static String formatLineBreak(String text){
+        return text.replaceAll("(\n<br[ ]*/?>)|(<br[ ]*/?>\n)|(<br[ ]*/?>)|(\r\n)", "\n");
     }
 
 }

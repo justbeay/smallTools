@@ -47,7 +47,7 @@ public class ArticleGrabTest {
             System.out.println(catalogues);
         }else{
             for(Catalogue catalogue : catalogues){
-                System.out.println(JSON.toJSONString(catalogue));
+                System.out.println(JSON.toJSONString(catalogue, true));
             }
         }
     }
@@ -63,14 +63,16 @@ public class ArticleGrabTest {
         grabInstance.setContentUrl("http://www.biquge5200.com/38_38857/15054739.html");
         grabInstance.setGrabTimeInterval(1000l);
         Article article = grabInstance.grabArticle(3);
-        System.out.println(JSONObject.toJSONString(article));
+        System.out.println(JSONObject.toJSONString(article, true));
     }
 
     @Test
     public void testGrabArticle2() throws Exception{
         grabInstance.setContentUrl("http://www.biquge5200.com/38_38857/15054739.html");
         grabInstance.setGrabTimeInterval(500l);
-        List<Article> articles = grabInstance.grabArticle(2, 5);
-        System.out.println(JSONObject.toJSONString(articles));
+        grabInstance.addSpamRule("求推荐", SpamStrategyEnum.MATCH_CONTAINS_DEL_REMAINS);
+        grabInstance.addSpamRule("求收藏", SpamStrategyEnum.MATCH_CONTAINS_DEL_REMAINS);
+        List<Article> articles = grabInstance.grabArticle(2, 3);
+        System.out.println(JSONObject.toJSONString(articles, true));
     }
 }

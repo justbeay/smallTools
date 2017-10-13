@@ -34,6 +34,7 @@ public class ArticleGrab {
     private String pagePrevStructure;  // 文章上一页DOM结构
     private String pageNextStructure;  // 文章下一页DOM结构
     private Long grabTimeInterval;  // 两次抓取之间的时间间隔（防止抓取过快导致服务器报错，默认不停顿），单位毫秒
+    private Map<String, SpamStrategyEnum> spamRules;
 
     private Map<String, Object> getRequestParam;
     private Map<String, Object> postRequestParam;
@@ -113,6 +114,72 @@ public class ArticleGrab {
     }
 
     /**
+     * 增加垃圾词汇匹配规则
+     * @param word 关键字
+     */
+    public void addSpamRule(String word){
+        this.addSpamRule(word, SpamStrategyEnum.MATCH_CONTAINS_DEL_SELF);
+    }
+
+    /**
+     * 增加垃圾词汇匹配规则
+     * @param word 关键字
+     * @param strategy 策略
+     */
+    public void addSpamRule(String word, SpamStrategyEnum strategy){
+        if(this.spamRules == null){
+            this.spamRules = new HashMap<String, SpamStrategyEnum>();
+        }
+        this.spamRules.put(word, strategy);
+    }
+
+    /**
+     * 反垃圾处理
+     * @param str 待处理文本
+     * @return
+     */
+    private String processSpam(String str){
+        StringBuilder buffer = new StringBuilder(str.length());
+        int startPos = 0;
+        while(startPos < str.length()){
+            int endPos = str.indexOf('\n', startPos);
+            if(endPos == -1){
+                endPos = str.length();
+            }
+            String lineStr = str.substring(startPos, endPos);
+            // 执行反垃圾策略匹配逻辑
+            String keyword = null;
+            SpamStrategyEnum strategy = null;
+            for(Map.Entry<String, SpamStrategyEnum> entry : this.spamRules.entrySet()){
+                String tmpKeyword = entry.getKey();
+                SpamStrategyEnum tmpStrategy = entry.getValue();
+                boolean matched = tmpStrategy.matchEqual() ? (tmpKeyword.isEmpty() ? lineStr.trim().isEmpty() : lineStr.trim().equals(tmpStrategy))
+                                            : lineStr.contains(tmpKeyword);
+                if(matched){  // 匹配到规则
+                    if(!tmpStrategy.needContinue() || strategy == null || !strategy.deleteLine()){  // 匹配到更高级的规则
+                        strategy = tmpStrategy;
+                        keyword = tmpKeyword;
+                    }
+                    if(!strategy.needContinue()) break;  // 无需继续处理
+                }
+            }
+            if(strategy != null){  // 根据匹配到的最高级规则进行文本处理
+                if(!strategy.deleteLine()){
+                    buffer.append(SpamStrategyEnum.MATCH_CONTAINS_DEL_REMAINS.equals(strategy)
+                                ? lineStr.substring(0, lineStr.indexOf(keyword))
+                                : lineStr.replace(keyword, "")).append('\n');
+                }
+                if(!strategy.needContinue()) break;  // 无需继续处理
+            }else{
+                buffer.append(lineStr).append('\n');
+            }
+            // 更新下一行的起始位置
+            startPos = endPos + 1;
+        }
+        return buffer.length() == 0 ? "" : buffer.deleteCharAt(buffer.length() - 1).toString();  // 删除末位换行
+    }
+
+    /**
      * 抓取目录页标题（大标题或总标题）
      * @return
      */
@@ -167,7 +234,8 @@ public class ArticleGrab {
             article = new Article();
             if(this.contentStructure != null){
                 String content = HtmlGrabUtil.getInnerHtml(this.curContentPageDoc, this.contentStructure);
-                article.setContent(HtmlGrabUtil.formatText(content));
+                content = HtmlGrabUtil.formatLineBreak(content);
+                article.setContent(this.processSpam(content));
             }
             if(this.titleStructure != null){
                 article.setTitle(HtmlGrabUtil.getInnerHtml(this.curContentPageDoc, this.titleStructure));

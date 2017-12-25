@@ -17,9 +17,10 @@ public class PropertyUtil {
 
     static {
         propFiles = new ArrayList<String>();
-        propFiles.add("common.properties");
         propFiles.add("network.properties");
         propFiles.add("sql_format.properties");
+        propFiles.add("redis.properties");
+        propFiles.add("common.properties");
 
         propsMap = new LinkedHashMap<String, Properties>();
         for(String propFile : propFiles) {

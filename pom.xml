@@ -26,6 +26,8 @@
         <commons.io.version>2.4</commons.io.version>
         <fastjson.version>1.2.17</fastjson.version>
         <jsoup.version>1.10.2</jsoup.version>
+        <redis.clients.version>2.7.0</redis.clients.version>
+        <cli-parser.version>1.1</cli-parser.version>
     </properties>
 
     <dependencies>
@@ -106,7 +108,16 @@
 			<artifactId>gson</artifactId>
 			<version>${gson.version}</version>
 		</dependency>
-
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+            <version>${redis.clients.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.spullara.cli-parser</groupId>
+            <artifactId>cli-parser</artifactId>
+            <version>${cli-parser.version}</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -134,7 +145,8 @@
                     </descriptorRefs>
                     <archive>
                         <manifest>
-                            <mainClass>com.tool.runner.IbatisLogMonitorRunner</mainClass>
+                            <!--<mainClass>com.tool.runner.IbatisLogMonitorRunner</mainClass>-->
+                            <mainClass>com.tool.runner.RedisConsoleMgmtRunner</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

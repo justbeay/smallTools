@@ -2,6 +2,8 @@ package com.tool.utils;
 
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -46,4 +48,75 @@ public class StringUtil {
         return minLength;
     }
 
+    public static int getMaxLength(String... strs){
+        int maxLength = 0;
+        for(int i=1; i<strs.length; i++){
+            int curLength = StringUtils.length(strs[i]);
+            if(curLength > maxLength){
+                maxLength = curLength;
+            }
+        }
+        return maxLength;
+    }
+
+    public static int indexOf(String str, char ch, int startPos, char escapedChar){
+        int pos = str.indexOf(ch, startPos);
+        if(pos >= 0){
+            int escapeCount = 0;
+            int i = pos;
+            while(--i > 0 && str.charAt(i) == escapedChar){
+                escapeCount ++;
+            }
+            if(escapeCount % 2 != 0){  // 前面连续单数个转义符
+                pos = indexOf(str, ch, pos + 1, escapedChar);
+            }
+        }
+        return pos;
+    }
+
+    public static String[] split(String str, char[] splitChars, char escapeChar){
+        List<String> resultList = new ArrayList<String>();
+        StringBuilder buffer = new StringBuilder();
+        boolean isPreEscape = false;
+        for(int i=0; i<str.length(); i++){
+            char ch = str.charAt(i);
+            if(ch == escapeChar){  // 转义字符
+                if(isPreEscape){
+                    isPreEscape = false;
+                    buffer.append(ch);
+                }else{
+                    isPreEscape = true;
+                }
+            }else{
+                // 判断是否为分隔符
+                boolean isSplitChar = false;
+                for(int j=0; j<splitChars.length; j++){
+                    if(splitChars[j] == ch){
+                        isSplitChar = true;
+                        break;
+                    }
+                }
+                if(!isSplitChar || isPreEscape){  // 非分隔符或已转义
+                    if(!isSplitChar && isPreEscape) {
+                        buffer.append(escapeChar);  // 仅可以对分隔符或转义符进行转义
+                    }
+                    isPreEscape = false;
+                    buffer.append(ch);
+                }else if(buffer.length() > 0){
+                    resultList.add(buffer.toString());
+                    buffer.delete(0, buffer.length());
+                }
+            }
+        }
+        if(buffer.length() > 0){
+            resultList.add(buffer.toString());
+        }
+        // 返回
+        String[] resultArr = new String[resultList.size()];
+        return resultList.toArray(resultArr);
+    }
+
+    public static String[] split(String str, char escapeChar){
+        return split(str, new char[]{' ', '\t', '\n'}, escapeChar);
+    }
 }

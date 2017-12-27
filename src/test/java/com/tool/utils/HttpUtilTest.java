@@ -14,9 +14,13 @@ public class HttpUtilTest {
     @Test
     public void testGet_1(){
         String result = HttpUtil.get("http://example.com");
-        System.out.println(result);
+        System.out.println(result.length());
+        result = HttpUtil.get("https://git.io");
+        System.out.println(result.length());
+        result = HttpUtil.get("https://github.com");
+        System.out.println(result.length());
         result = HttpUtil.get("https://wap.12306.cn/mormhweb");
-        System.out.println(result);
+        System.out.println(result.length());
     }
 
     @Test

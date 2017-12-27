@@ -176,6 +176,13 @@
                     <include>*.properties</include>
                 </includes>
             </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <includes>
+                    <include>cert/*.cer</include>
+                </includes>
+            </resource>
         </resources>
     </build>
 

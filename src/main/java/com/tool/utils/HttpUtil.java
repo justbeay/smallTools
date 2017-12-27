@@ -18,7 +18,6 @@ import org.apache.http.config.RegistryBuilder;
 import org.apache.http.conn.socket.ConnectionSocketFactory;
 import org.apache.http.conn.socket.PlainConnectionSocketFactory;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
-import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
 import org.apache.http.conn.ssl.TrustStrategy;
 import org.apache.http.conn.util.PublicSuffixMatcherLoader;
 import org.apache.http.cookie.CookieSpecProvider;
@@ -31,8 +30,6 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
-import org.apache.http.impl.cookie.BestMatchSpecFactory;
-import org.apache.http.impl.cookie.BrowserCompatSpecFactory;
 import org.apache.http.impl.cookie.DefaultCookieSpecProvider;
 import org.apache.http.impl.cookie.RFC6265CookieSpecProvider;
 import org.apache.http.message.BasicNameValuePair;
@@ -46,7 +43,9 @@ import javax.net.ssl.*;
 import java.io.*;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.security.KeyStore;
 import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.HashMap;
 import java.util.Map;
@@ -69,7 +68,7 @@ public class HttpUtil {
     private static final Map<String, Object> networkSettings = PropertyUtil.getProperties("network.", false, true);
     /** HttpClientBuilder集合，key为协议名称（http、https） */
     private static final Map<String, HttpClientBuilder> httpClientBuilders = new HashMap<String, HttpClientBuilder>();
-    private static final RequestConfig requstConfig;
+    private static final RequestConfig requestConfig;
 
     private static final Logger logger = LoggerFactory.getLogger(HttpUtil.class);
 
@@ -84,7 +83,7 @@ public class HttpUtil {
         if(connectTimeout != null){
             configBuilder.setConnectTimeout(connectTimeout);
         }
-        requstConfig = configBuilder.build();
+        requestConfig = configBuilder.build();
     }
 
     private static HttpClientBuilder getHttpClientBuilder(String url){
@@ -122,9 +121,8 @@ public class HttpUtil {
         Integer poolSize = (Integer) networkSettings.get("pool.size");
         poolSize = poolSize != null ? poolSize : 10;
         Boolean ignoreCert = (Boolean) networkSettings.get("ssl.ignore");
-        PoolingHttpClientConnectionManager connectionManager = ("https".equals(protocol) && ignoreCert != null || ignoreCert)
-                ? new PoolingHttpClientConnectionManager(buildSocketFactoryRegistryWithSSLCertIgnore())
-                : new PoolingHttpClientConnectionManager();
+        ignoreCert = ignoreCert != null && ignoreCert;
+        PoolingHttpClientConnectionManager connectionManager = buildHttpClientConnectionManager(protocol, ignoreCert);
         connectionManager.setMaxTotal(poolSize);
         connectionManager.setDefaultMaxPerRoute(connectionManager.getMaxTotal());
         httpClientBuilder.setConnectionManager(connectionManager)
@@ -133,28 +131,56 @@ public class HttpUtil {
         return httpClientBuilder;
     }
 
-    private static Registry<ConnectionSocketFactory> buildSocketFactoryRegistryWithSSLCertIgnore(){
+    private static PoolingHttpClientConnectionManager buildHttpClientConnectionManager(String protocol, boolean ignoreCert){
+        if(!"https".equals(protocol)){
+            return new PoolingHttpClientConnectionManager();
+        }
         try {
             SSLContextBuilder builder = SSLContexts.custom();
-            builder.loadTrustMaterial(null, new TrustStrategy() {
-                @Override
-                public boolean isTrusted(X509Certificate[] chain, String authType)
-                        throws CertificateException {
-                    return true;
-                }
-            });
+            if(ignoreCert) {  // 不验证证书有效性
+                builder.loadTrustMaterial(null, new TrustStrategy() {
+                    @Override
+                    public boolean isTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                        return true;
+                    }
+                });
+            } else {
+                builder.loadTrustMaterial(loadSSLCertificates(), null);
+            }
             SSLContext sslContext = builder.build();
-            SSLConnectionSocketFactory sslsf = new SSLConnectionSocketFactory(sslContext, new HostnameVerifier() {
-                @Override
-                public boolean verify(String s, SSLSession sslSession) {
-                    return true;
-                }
-            });
-            return RegistryBuilder.<ConnectionSocketFactory> create()
+            SSLConnectionSocketFactory sslsf = new SSLConnectionSocketFactory(sslContext);
+            Registry<ConnectionSocketFactory> socketFactoryRegistry  = RegistryBuilder.<ConnectionSocketFactory> create()
                     .register("https", sslsf)
                     .register("http", new PlainConnectionSocketFactory()).build();
+            return new PoolingHttpClientConnectionManager(socketFactoryRegistry);
         }catch (Exception e){
             logger.error("error build SocketFactoryRegistry with SSL cert ignore, message:{}", e.getMessage());
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * 加载网站证书文件
+     * @return
+     */
+    private static KeyStore loadSSLCertificates(){
+        try {
+            KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+            keyStore.load(null);
+            URL url = Thread.currentThread().getContextClassLoader().getResource("cert");
+            if (url != null) {
+                CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
+                for (File certFile : new File(url.getPath()).listFiles()) {
+                    if(!certFile.getName().endsWith(".cer")) continue;
+                    String certAlias = certFile.getName().replaceFirst(".cer$", "");
+                    InputStream certStream = new FileInputStream(certFile);
+                    keyStore.setCertificateEntry(certAlias, certificateFactory.generateCertificate(certStream));
+                    certStream.close();
+                }
+            }
+            return keyStore;
+        } catch (Exception e){
+            logger.error("error loading cert files, message:{}", e.getMessage());
             throw new RuntimeException(e);
         }
     }
@@ -168,21 +194,6 @@ public class HttpUtil {
                 .register(CookieSpecs.DEFAULT, new DefaultCookieSpecProvider(PublicSuffixMatcherLoader.getDefault()))
                 .register(CookieSpecs.STANDARD, new RFC6265CookieSpecProvider(PublicSuffixMatcherLoader.getDefault()))
                 .build();
-    }
-
-    private static SSLConnectionSocketFactory getDefaultSSLSocketFactory(){
-        Boolean ignoreCert = (Boolean) networkSettings.get("ssl.ignore");
-        if(ignoreCert == null || !ignoreCert) {  // 默认需要验证证书
-            return SSLConnectionSocketFactory.getSocketFactory();
-        }
-        try {
-            SSLContextBuilder builder = new SSLContextBuilder();
-            builder.loadTrustMaterial(null, new TrustSelfSignedStrategy());
-            return new SSLConnectionSocketFactory(builder.build());
-        }catch (Exception e){
-            logger.error(e.getMessage(), e);
-            throw new RuntimeException(e);
-        }
     }
 
     private static boolean checkHttpResponse(CloseableHttpResponse httpResponse){
@@ -354,7 +365,7 @@ public class HttpUtil {
                 httpRequest = new HttpGet(appendQueryParamToUrl(url, headerParams));
                 appendHeaders(httpRequest, headerParams, null);
             }
-            httpRequest.setConfig(requstConfig);
+            httpRequest.setConfig(requestConfig);
             httpResponse = httpClient.execute(httpRequest);
             if(!checkHttpResponse(httpResponse)) {  // HTTP返回状态码异常
                 return null;
@@ -484,7 +495,7 @@ public class HttpUtil {
         HttpEntity httpEntity = null;
         try{
             httpPost = new HttpPost(url);
-            httpPost.setConfig(requstConfig);
+            httpPost.setConfig(requestConfig);
             appendHeaders(httpPost, headerParams, ContentType.parse(contentType));
             httpPost.setEntity(new ByteArrayEntity(contentByte));
             httpResponse = httpClient.execute(httpPost);
